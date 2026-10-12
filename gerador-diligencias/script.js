@@ -88,11 +88,13 @@ const MODELOS = {
 };
 
 // Texto de cada diligência: {{N}} = número, {{UNIDADE}}, {{PERIODO}}
+// {{UNIDADE_EXTINTA}} só aparece quando a unidade é a CEAG e a unidade extinta foi preenchida
 const MODELO_DILIGENCIA = `
   <div class="dil">
     <p><b>{{N}}ª DILIGÊNCIA – {{UNIDADE}}</b></p>
     <p><b>Período:</b> {{PERIODO}}</p>
     <p><b>Prazo para resposta:</b> Conforme prazo do NUP</p>
+    {{UNIDADE_EXTINTA}}
   </div>
 `;
 
@@ -198,7 +200,11 @@ const ROTULOS = {
 
 const CHAVE_RASCUNHO = "gerador-diligencias-rascunho";
 
-function novaDiligencia() { return { unidade: "", periodo: "", manual: false }; }
+function novaDiligencia() { return { unidade: "", periodo: "", manual: false, extinta: "" }; }
+
+// Quando a unidade é a CEAG (Célula de Arquivo Geral), aparece o campo "Unidade extinta".
+// Basta o texto da unidade conter a palavra CEAG (maiúscula ou minúscula).
+function ehCeag(unidade) { return /\bCEAG\b/i.test(unidade || ""); }
 let diligencias = [novaDiligencia()];
 let imagemSapm = "";   // imagem em base64, fica só na memória do navegador
 
@@ -290,10 +296,14 @@ function desenharDiligencias() {
       '<input type="text" data-i="' + i + '" data-campo="unidade" placeholder="Ex.: 3º CPG"></label>' +
       '<label>PERÍODO <span class="obr">*</span>' +
       '<input type="text" data-i="' + i + '" data-campo="periodo" placeholder="Automático (pode editar)"></label>' +
+      '<label class="largo campo-extinta">UNIDADE EXTINTA (opcional) — aparece no documento como "Unidade: ..."' +
+      '<input type="text" data-i="' + i + '" data-campo="extinta" placeholder="Ex.: 1° CPCOM (unidade extinta que precisamos da informação)"></label>' +
       '</div>';
     caixa.appendChild(cartao);
     cartao.querySelector('[data-campo="unidade"]').value = d.unidade;
     cartao.querySelector('[data-campo="periodo"]').value = d.periodo;
+    cartao.querySelector('[data-campo="extinta"]').value = d.extinta || "";
+    cartao.querySelector(".campo-extinta").hidden = !ehCeag(d.unidade);
   });
 }
 
@@ -323,9 +333,15 @@ function htmlNomeAssinante(nome) {
 }
 
 function htmlDiligencias(lista) {
-  return lista.map((d, i) => preencher(MODELO_DILIGENCIA, {
-    N: i + 1, UNIDADE: esc(d.unidade), PERIODO: esc(d.periodo)
-  })).join('<p class="v">&nbsp;</p>');
+  return lista.map((d, i) => {
+    const extinta = (d.extinta || "").trim();
+    const linhaExtinta = ehCeag(d.unidade) && extinta
+      ? "<p><b>Unidade: " + esc(extinta) + "</b></p>"      // igual ao modelo: "Unidade: 1° CPCOM"
+      : "";
+    return preencher(MODELO_DILIGENCIA, {
+      N: i + 1, UNIDADE: esc(d.unidade), PERIODO: esc(d.periodo), UNIDADE_EXTINTA: linhaExtinta
+    });
+  }).join('<p class="v">&nbsp;</p>');
 }
 
 function htmlResumo(lista) {
@@ -528,7 +544,7 @@ function carregarRascunho() {
   CAMPOS.forEach((id) => { $(id).value = (dados.campos && dados.campos[id]) || ""; });
   diligencias = Array.isArray(dados.diligencias) && dados.diligencias.length
     ? dados.diligencias.map((d) => ({
-        unidade: d.unidade || "", periodo: d.periodo || "",
+        unidade: d.unidade || "", periodo: d.periodo || "", extinta: d.extinta || "",
         manual: d.manual !== undefined ? !!d.manual : !!d.periodo
       }))
     : [novaDiligencia()];
@@ -624,6 +640,9 @@ function iniciar() {
       const d = diligencias[Number(alvo.dataset.i)];
       d[alvo.dataset.campo] = alvo.value;
       if (alvo.dataset.campo === "periodo") d.manual = alvo.value.trim() !== "";
+      if (alvo.dataset.campo === "unidade") {
+        alvo.closest(".dilig").querySelector(".campo-extinta").hidden = !ehCeag(alvo.value);
+      }
       atualizar();
     }
   });
